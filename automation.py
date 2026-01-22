@@ -3,352 +3,233 @@ import random
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.action_chains import ActionChains
 import os
 
-class TelegramBot:
-    def __init__(self, browser_id, starting_digit):
-        self.browser_id = browser_id
-        self.starting_digit = starting_digit
+class TelegramUltimateBot:
+    def __init__(self):
         self.driver = None
-        self.generated_numbers = set()
+        self.numbers_set = set()
     
-    def setup_chrome(self):
-        """Setup Chrome browser"""
-        chrome_options = Options()
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--start-maximized")
+    def setup(self):
+        """Setup browser"""
+        driver_path = r'C:\Users\rosha\Downloads\chrome_automation\chromedriver.exe'
+        service = Service(driver_path)
         
-        try:
-            # ChromeDriver path
-            driver_path = r'C:\Users\rosha\Downloads\chrome_automation\chromedriver.exe'
-            
-            # Use Service for Selenium 4
-            service = Service(executable_path=driver_path)
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            
-            print(f"✅ Browser {self.browser_id}: Chrome started")
-            return True
-        except Exception as e:
-            print(f"❌ Browser {self.browser_id}: Chrome error - {e}")
-            print("\n💡 ChromeDriver fix karo:")
-            print("1. Chrome update karo")
-            print("2. Ya correct ChromeDriver download karo")
-            print("3. Download from: https://chromedriver.chromium.org/")
-            return False
-    
-    def wait_on_telegram(self):
-        """Open Telegram and wait 1 minute, then refresh"""
-        try:
-            print(f"🌐 Browser {self.browser_id}: Opening Telegram...")
-            self.driver.get("https://web.telegram.org/a/")
-            print(f"✅ Browser {self.browser_id}: Telegram opened")
-            
-            # Wait exactly 1 minute (60 seconds)
-            print(f"⏳ Browser {self.browser_id}: Waiting 60 seconds...")
-            for i in range(60):
-                time.sleep(1)
-                if (i+1) % 10 == 0:  # Every 10 seconds
-                    print(f"   {60-(i+1)} seconds remaining...")
-            
-            # Refresh the page
-            print(f"🔄 Browser {self.browser_id}: Refreshing page...")
-            self.driver.refresh()
-            time.sleep(3)  # Wait for refresh to complete
-            
-            print(f"✅ Browser {self.browser_id}: Page refreshed")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Browser {self.browser_id}: Telegram error - {e}")
-            return False
-    
-    def go_to_target_chat(self):
-        """Navigate to target chat"""
-        try:
-            print(f"💬 Browser {self.browser_id}: Going to target chat...")
-            
-            target_url = "https://web.telegram.org/a/?account=2#8549408740"
-            self.driver.get(target_url)
-            
-            print(f"✅ Browser {self.browser_id}: Target chat opened")
-            time.sleep(5)  # Wait for chat to load
-            
-            return True
-        except Exception as e:
-            print(f"❌ Browser {self.browser_id}: Chat error - {e}")
-            return False
-    
-    def find_message_box(self):
-        """Find message input box"""
-        print(f"🔍 Browser {self.browser_id}: Finding message box...")
+        # Minimal options
+        options = webdriver.ChromeOptions()
+        options.add_argument("--start-maximized")
         
-        # Try different methods
-        methods_to_try = [
-            self._find_by_contenteditable,
-            self._find_by_input_tag,
-            self._find_by_placeholder,
-            self._find_by_class
-        ]
-        
-        for method in methods_to_try:
-            element = method()
-            if element:
-                return element
-        
-        print(f"❌ Browser {self.browser_id}: Message box not found")
-        return None
+        self.driver = webdriver.Chrome(service=service, options=options)
+        return True
     
-    def _find_by_contenteditable(self):
-        """Find contenteditable div"""
-        try:
-            elements = self.driver.find_elements(By.CSS_SELECTOR, "[contenteditable='true']")
-            for elem in elements:
-                if elem.is_displayed() and elem.is_enabled():
-                    print(f"✅ Found contenteditable box")
-                    return elem
-        except:
-            pass
-        return None
-    
-    def _find_by_input_tag(self):
-        """Find input or textarea"""
-        try:
-            # Try textarea first
-            textareas = self.driver.find_elements(By.TAG_NAME, "textarea")
-            for elem in textareas:
-                if elem.is_displayed() and elem.is_enabled():
-                    print(f"✅ Found textarea")
-                    return elem
-            
-            # Try input
-            inputs = self.driver.find_elements(By.TAG_NAME, "input")
-            for elem in inputs:
-                if elem.is_displayed() and elem.is_enabled():
-                    print(f"✅ Found input box")
-                    return elem
-        except:
-            pass
-        return None
-    
-    def _find_by_placeholder(self):
-        """Find by placeholder text"""
-        try:
-            elements = self.driver.find_elements(By.XPATH, "//*[@placeholder]")
-            for elem in elements:
-                if elem.is_displayed() and elem.is_enabled():
-                    placeholder = elem.get_attribute('placeholder') or ''
-                    if 'message' in placeholder.lower() or 'type' in placeholder.lower():
-                        print(f"✅ Found by placeholder: {placeholder}")
-                        return elem
-        except:
-            pass
-        return None
-    
-    def _find_by_class(self):
-        """Find by class name"""
-        class_names = ['input-message-input', 'composer', 'message-input', 'chat-input']
-        for class_name in class_names:
-            try:
-                elements = self.driver.find_elements(By.CLASS_NAME, class_name)
-                for elem in elements:
-                    if elem.is_displayed() and elem.is_enabled():
-                        print(f"✅ Found by class: {class_name}")
-                        return elem
-            except:
-                continue
-        return None
-    
-    def generate_indian_number(self):
-        """Generate unique 10-digit Indian number"""
-        while True:
-            number = str(self.starting_digit)
-            for _ in range(9):
-                number += str(random.randint(0, 9))
-            
-            if number not in self.generated_numbers:
-                self.generated_numbers.add(number)
-                return number
-    
-    def send_numbers(self, input_field):
-        """Send 5 numbers to chat"""
-        # Generate 5 numbers
-        numbers_list = []
-        for _ in range(5):
-            numbers_list.append(self.generate_indian_number())
-        
-        # Format: number1 number2 number3 number4 number5
-        message = " ".join(numbers_list)
-        
-        try:
-            # Clear and type
-            input_field.clear()
-            time.sleep(0.5)
-            
-            input_field.send_keys(message)
-            time.sleep(0.5)
-            
-            # Send message (Enter key)
-            input_field.send_keys(Keys.RETURN)
-            
-            print(f"✅ Sent: {message}")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Send error: {e}")
-            return False
-    
-    def run_bot(self):
-        """Main bot function"""
-        print(f"\n{'='*60}")
-        print(f"🤖 TELEGRAM BOT - Browser {self.browser_id}")
-        print(f"{'='*60}")
-        
-        # Step 1: Setup Chrome
-        if not self.setup_chrome():
-            return
-        
-        try:
-            # Step 2: Wait on Telegram for 1 minute and refresh
-            self.wait_on_telegram()
-            
-            # Step 3: Go to target chat
-            self.go_to_target_chat()
-            
-            # Step 4: Find message box
-            message_box = self.find_message_box()
-            
-            if message_box:
-                print(f"\n🎯 Browser {self.browser_id}: READY!")
-                print(f"📤 Will send 5 numbers every 2 seconds")
-                print(f"⏸️ Press Ctrl+C to stop")
+    def inject_telegram_helper(self):
+        """Inject JavaScript to help find Telegram elements"""
+        js_code = """
+        // Create global helper object
+        window.telegramHelper = {
+            findMessageBox: function() {
+                // Method 1: Contenteditable
+                let editables = document.querySelectorAll("[contenteditable='true']");
+                for(let elem of editables) {
+                    let rect = elem.getBoundingClientRect();
+                    if(rect.width > 200 && rect.height > 20) {
+                        return elem;
+                    }
+                }
                 
-                message_count = 0
+                // Method 2: Specific classes
+                let classes = ['input-message-input', 'composer_rich_textarea', 'im_editable'];
+                for(let className of classes) {
+                    let elems = document.getElementsByClassName(className);
+                    if(elems.length > 0) return elems[0];
+                }
+                
+                // Method 3: Look in footer
+                let footers = document.querySelectorAll('.chat-footer, .im_send_form');
+                for(let footer of footers) {
+                    let inputs = footer.querySelectorAll('input, textarea, [contenteditable]');
+                    if(inputs.length > 0) return inputs[0];
+                }
+                
+                return null;
+            },
+            
+            clickAndFocus: function(element) {
+                element.click();
+                element.focus();
+            }
+        };
+        
+        console.log("Telegram Helper injected");
+        return true;
+        """
+        
+        self.driver.execute_script(js_code)
+        return True
+    
+    def find_message_box_js(self):
+        """Use JavaScript to find message box"""
+        print("🔍 Using JavaScript to find message box...")
+        
+        # Inject helper if not already injected
+        try:
+            self.driver.execute_script("return window.telegramHelper;")
+        except:
+            self.inject_telegram_helper()
+        
+        # Find using JavaScript
+        result = self.driver.execute_script("""
+            try {
+                let box = window.telegramHelper.findMessageBox();
+                if(box) {
+                    window.telegramHelper.clickAndFocus(box);
+                    return box;
+                }
+                return null;
+            } catch(e) {
+                console.error("Error:", e);
+                return null;
+            }
+        """)
+        
+        if result:
+            print("✅ Found using JavaScript")
+            return result
+        else:
+            print("❌ JavaScript method failed")
+            return None
+    
+    def brute_force_find(self):
+        """Brute force method to find input"""
+        print("🔍 Brute force search for input...")
+        
+        # Try clicking at different positions
+        for y in [600, 650, 700, 750]:  # Different Y positions
+            for x in [300, 400, 500, 600]:  # Different X positions
                 try:
-                    while True:
-                        message_count += 1
-                        print(f"\n📦 Message #{message_count}")
-                        
-                        # Send numbers
-                        self.send_numbers(message_box)
-                        
-                        # Wait 2 seconds
-                        time.sleep(2)
-                        
-                except KeyboardInterrupt:
-                    print(f"\n⏹️ Stopped by user")
-                except Exception as e:
-                    print(f"❌ Error: {e}")
-            else:
-                print(f"\n❌ Browser {self.browser_id}: Cannot find message box")
-                print("Taking screenshot for debugging...")
-                try:
-                    self.driver.save_screenshot(f'error_browser_{self.browser_id}.png')
-                    print(f"Screenshot saved")
+                    self.driver.execute_script(f"""
+                        var elem = document.elementFromPoint({x}, {y});
+                        if(elem) {{
+                            elem.click();
+                            elem.focus();
+                        }}
+                    """)
+                    time.sleep(0.5)
+                    
+                    # Check if we found an input
+                    try:
+                        active = self.driver.switch_to.active_element
+                        tag = active.tag_name.lower()
+                        if tag in ['input', 'textarea'] or active.get_attribute('contenteditable') == 'true':
+                            print(f"✅ Found at position ({x}, {y})")
+                            return active
+                    except:
+                        pass
                 except:
                     pass
         
+        return None
+    
+    def run_bot(self):
+        """Main bot"""
+        print("🤖 Ultimate Telegram Bot")
+        print("="*50)
+        
+        if not self.setup():
+            return
+        
+        try:
+            # Step 1: Open Telegram
+            print("🌐 Opening Telegram...")
+            self.driver.get("https://web.telegram.org/a/")
+            
+            print("\n📱 MANUAL LOGIN REQUIRED")
+            print("Login with QR code within 60 seconds")
+            print("="*40)
+            
+            for i in range(60):
+                time.sleep(1)
+                if (i+1) % 10 == 0:
+                    print(f"{60-(i+1)} seconds remaining...")
+            
+            print("\n✅ Assuming login complete")
+            
+            # Step 2: Open target chat
+            print("💬 Opening target chat...")
+            self.driver.get("https://web.telegram.org/a/?account=2#8549408740")
+            time.sleep(5)
+            
+            # Step 3: Find message box
+            message_box = self.find_message_box_js()
+            
+            if not message_box:
+                message_box = self.brute_force_find()
+            
+            if not message_box:
+                print("❌ Could not find message box")
+                self.driver.save_screenshot('error.png')
+                return
+            
+            print("🎯 Ready to send messages!")
+            
+            # Generate and send numbers
+            count = 0
+            try:
+                while True:
+                    count += 1
+                    print(f"\n📦 Message #{count}")
+                    
+                    # Generate 5 numbers
+                    numbers = []
+                    for _ in range(5):
+                        num = '6' + ''.join(str(random.randint(0, 9)) for _ in range(9))
+                        numbers.append(num)
+                    
+                    message = " ".join(numbers)
+                    print(f"📝: {message}")
+                    
+                    # Send
+                    try:
+                        # Clear
+                        if message_box.tag_name in ['input', 'textarea']:
+                            message_box.clear()
+                        else:
+                            self.driver.execute_script("arguments[0].innerHTML = '';", message_box)
+                        
+                        time.sleep(0.3)
+                        
+                        # Type
+                        for char in message:
+                            message_box.send_keys(char)
+                            time.sleep(0.01)
+                        
+                        time.sleep(0.3)
+                        
+                        # Send
+                        message_box.send_keys(Keys.RETURN)
+                        
+                        print("✅ Sent")
+                        
+                    except Exception as e:
+                        print(f"❌ Send error: {e}")
+                        # Try to find again
+                        message_box = self.find_message_box_js()
+                    
+                    time.sleep(2)
+                    
+            except KeyboardInterrupt:
+                print("\n⏹️ Stopped")
+                
         except Exception as e:
-            print(f"❌ Fatal error: {e}")
+            print(f"❌ Error: {e}")
         
         finally:
-            print(f"\n📊 Browser {self.browser_id}: Finished")
-            print("Browser will stay open for inspection")
-            print("Close it manually when done")
+            print("\n🤖 Bot finished")
+            print("Close browser manually")
 
-def main():
-    print("\n" + "="*70)
-    print("🤖 SIMPLE TELEGRAM AUTOMATION BOT")
-    print("="*70)
-    print("Steps:")
-    print("1. Open https://web.telegram.org/a/")
-    print("2. Wait 60 seconds")
-    print("3. Refresh page")
-    print("4. Go to target chat")
-    print("5. Send 5 numbers every 2 seconds")
-    print("="*70)
-    
-    # Fix ChromeDriver first
-    driver_path = r'C:\Users\rosha\Downloads\chrome_automation\chromedriver.exe'
-    
-    if not os.path.exists(driver_path):
-        print(f"\n❌ ChromeDriver not found at: {driver_path}")
-        print("\nPlease download ChromeDriver:")
-        print("1. Go to: https://chromedriver.chromium.org/")
-        print("2. Download matching version")
-        print("3. Place in: C:\\Users\\rosha\\Downloads\\chrome_automation\\")
-        return
-    
-    print(f"✅ ChromeDriver found")
-    
-    # Configuration
-    print(f"\n⚙️ Configuration:")
-    print(f"   Starting digit: 6")
-    print(f"   Numbers: 10-digit Indian")
-    print(f"   Interval: 2 seconds")
-    print(f"   Each message: 5 numbers")
-    
-    print(f"\n🚀 Starting in 5 seconds...")
-    print("   Close all Chrome windows first!")
-    time.sleep(5)
-    
-    # Create and run bot
-    bot = TelegramBot(1, 6)  # Single browser with digit 6
-    bot.run_bot()
-    
-    print(f"\n" + "="*70)
-    print("🎉 Bot finished!")
-    print("="*70)
-
-# SIMPLE TEST FUNCTION
-def test_chromedriver():
-    """Test if ChromeDriver works"""
-    print("🔧 Testing ChromeDriver...")
-    
-    driver_path = r'C:\Users\rosha\Downloads\chrome_automation\chromedriver.exe'
-    
-    if not os.path.exists(driver_path):
-        print(f"❌ ChromeDriver not found!")
-        return False
-    
-    try:
-        from selenium import webdriver
-        from selenium.webdriver.chrome.service import Service
-        
-        service = Service(executable_path=driver_path)
-        driver = webdriver.Chrome(service=service)
-        
-        driver.get("https://www.google.com")
-        print("✅ ChromeDriver test PASSED!")
-        print("✅ Chrome opened successfully")
-        
-        time.sleep(3)
-        driver.quit()
-        return True
-        
-    except Exception as e:
-        print(f"❌ ChromeDriver test FAILED: {e}")
-        
-        # Version mismatch error
-        if "version" in str(e).lower() and "chrome" in str(e).lower():
-            print("\n🔧 VERSION MISMATCH DETECTED!")
-            print("Please fix ChromeDriver version:")
-            print("1. Check Chrome version: chrome://version/")
-            print("2. Download matching ChromeDriver from:")
-            print("   https://chromedriver.chromium.org/")
-            print("3. Replace the chromedriver.exe file")
-        
-        return False
-
+# Run simple bot
 if __name__ == "__main__":
-    # First test ChromeDriver
-    if test_chromedriver():
-        print("\n" + "="*70)
-        print("✅ ChromeDriver working, starting main bot...")
-        print("="*70)
-        time.sleep(2)
-        main()
-    else:
-        print("\n❌ Please fix ChromeDriver first!")
+    bot = TelegramUltimateBot()
+    bot.run_bot()
