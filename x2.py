@@ -55,7 +55,7 @@ for attempt in range(20):
     print(f"Attempt {attempt+1}/20...")
     time.sleep(2)
 
-# ✅ ADDED BLOCK (ONLY ADDITION)
+# ✅ ADDED BLOCK (SAME AS PREVIOUS SCRIPT)
 if not msg_box:
     try:
         msg_box = driver.find_element(By.ID, "editable-message-text")
