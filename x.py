@@ -32,7 +32,7 @@ input("Press Enter AFTER you are logged in and can see chat interface: ")
 
 # Step 2: Navigate to target chat
 print("📍 Going to target chat...")
-browser1.get("https://web.telegram.org/a/?account=2#8549408740")
+browser1.get("https://web.telegram.org/a/#8549408740")
 time.sleep(5)
 
 print("✅ Target chat should be loaded")
