@@ -1,5 +1,6 @@
 import time
 import random
+import threading
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -7,147 +8,85 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 import os
 
-class TelegramMasterBot:
-    def __init__(self):
+class TelegramBrowserBot:
+    def __init__(self, browser_id, starting_digit):
+        self.browser_id = browser_id
+        self.starting_digit = starting_digit  # 8 or 9 only
         self.driver = None
-        self.tabs = []
-        self.all_numbers = set()
-        self.first_tab_ready = False
+        self.generated_numbers = set()
+        self.message_box = None
         
-    def setup_chrome(self):
-        """Setup Chrome browser"""
+    def setup_browser(self):
+        """Setup individual Chrome browser"""
         chrome_options = Options()
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--start-maximized")
         
-        # Add user data for session persistence
-        chrome_options.add_argument(f"--user-data-dir=C:\\Users\\rosha\\telegram_session")
+        # Use separate user data for each browser
+        user_data_dir = f"C:/Users/rosha/Downloads/chrome_automation/browser_{self.browser_id}"
+        chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+        
+        # Remove automation flags
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
         
         try:
             driver_path = r'C:\Users\rosha\Downloads\chrome_automation\chromedriver.exe'
             service = Service(driver_path)
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             
-            print("✅ Chrome started with session persistence")
+            print(f"✅ Browser {self.browser_id} (Digit: {self.starting_digit}) started")
             return True
         except Exception as e:
-            print(f"❌ Chrome setup error: {e}")
+            print(f"❌ Browser {self.browser_id} setup error: {e}")
             return False
     
-    def wait_for_first_tab_login_and_setup(self):
-        """Wait for first tab to be completely ready"""
-        print("\n" + "="*60)
-        print("🔑 STEP 1: FIRST TAB SETUP")
-        print("="*60)
+    def manual_login_and_setup(self):
+        """Manual login and setup for this browser"""
+        print(f"\n📱 BROWSER {self.browser_id} - MANUAL LOGIN REQUIRED")
+        print("="*50)
         
-        # Step 1: Open Telegram
+        # Open Telegram
         self.driver.get("https://web.telegram.org/a/")
-        print("✅ Telegram opened in first tab")
+        print(f"✅ Browser {self.browser_id}: Telegram opened")
         
-        # Store first tab
-        self.tabs.append(self.driver.current_window_handle)
-        print(f"📌 First tab stored: {self.tabs[0][:10]}...")
+        print(f"\n🔑 Please login with QR code in Browser {self.browser_id}")
+        print(f"Starting digit for this browser: {self.starting_digit}")
+        input(f"Press Enter AFTER you are fully logged in to Browser {self.browser_id}: ")
         
-        print("\n📱 PLEASE LOGIN MANUALLY WITH QR CODE")
-        print("⏳ Waiting for login completion...")
-        print("="*60)
-        
-        # Phase 1: Wait for login
-        login_complete = False
-        while not login_complete:
-            try:
-                # Check for login indicators
-                current_url = self.driver.current_url
-                page_text = self.driver.page_source.lower()
-                
-                # Login successful indicators
-                if "#" in current_url or "chat" in page_text or "dialog" in page_text:
-                    login_complete = True
-                    print("✅ Login detected!")
-                else:
-                    # Check for QR code or login page
-                    if "qr" in page_text or "login" in page_text or "scan" in page_text:
-                        print("⏳ Still on login page... Please scan QR code")
-                    else:
-                        print("⏳ Waiting for login...")
-                
-                time.sleep(5)
-                
-            except Exception as e:
-                print(f"⚠️ Login check error: {e}")
-                time.sleep(5)
-        
-        # Phase 2: Navigate to target chat
-        print("\n📍 Navigating to target chat...")
-        target_url = "https://web.telegram.org/a/?account=2#8549408740"
-        self.driver.get(target_url)
+        # Navigate to target chat
+        print(f"\n📍 Browser {self.browser_id}: Going to target chat...")
+        self.driver.get("https://web.telegram.org/a/#8549408740")
         time.sleep(5)
-        print("✅ Target chat opened")
+        print(f"✅ Browser {self.browser_id}: Target chat opened")
         
-        # Phase 3: Find message box in first tab
-        print("\n🔍 Finding message box in first tab...")
-        first_tab_message_box = self.find_message_box_with_retry(0)
-        
-        if not first_tab_message_box:
-            print("❌ Could not find message box in first tab")
-            return False
-        
-        # Phase 4: Test sending a message in first tab
-        print("\n🧪 Testing message sending in first tab...")
-        test_success = self.test_send_message(0, first_tab_message_box)
-        
-        if not test_success:
-            print("❌ First tab test failed")
-            return False
-        
-        print("\n✅ FIRST TAB IS FULLY READY!")
-        print("   ✓ Logged in")
-        print("   ✓ Target chat loaded")
-        print("   ✓ Message box found")
-        print("   ✓ Test message sent successfully")
-        
-        self.first_tab_ready = True
         return True
     
-    def find_message_box_with_retry(self, tab_index=0, max_attempts=15):
-        """Find message box with multiple retries"""
-        print(f"🔍 Searching for message box (Attempts: {max_attempts})...")
+    def find_message_box(self):
+        """Find message box in current browser"""
+        print(f"🔍 Browser {self.browser_id}: Finding message box...")
         
-        for attempt in range(1, max_attempts + 1):
+        for attempt in range(10):
             try:
-                if tab_index > 0:
-                    self.driver.switch_to.window(self.tabs[tab_index])
+                # Method 1: Contenteditable
+                elements = self.driver.find_elements(By.CSS_SELECTOR, "[contenteditable='true']")
+                for elem in elements:
+                    if elem.is_displayed() and elem.is_enabled():
+                        self.message_box = elem
+                        print(f"✅ Browser {self.browser_id}: Found contenteditable box")
+                        return True
                 
-                # Method 1: Contenteditable elements
-                editables = self.driver.find_elements(By.CSS_SELECTOR, "[contenteditable='true']")
-                for elem in editables:
-                    try:
-                        if elem.is_displayed() and elem.is_enabled():
-                            print(f"✅ Found contenteditable message box (Attempt {attempt})")
-                            return elem
-                    except:
-                        continue
+                # Method 2: Input/textarea
+                elements = self.driver.find_elements(By.TAG_NAME, "input") + self.driver.find_elements(By.TAG_NAME, "textarea")
+                for elem in elements:
+                    if elem.is_displayed() and elem.is_enabled():
+                        self.message_box = elem
+                        print(f"✅ Browser {self.browser_id}: Found input box")
+                        return True
                 
-                # Method 2: Input/textarea elements
-                inputs = self.driver.find_elements(By.TAG_NAME, "input")
-                textareas = self.driver.find_elements(By.TAG_NAME, "textarea")
-                
-                for elem in inputs + textareas:
-                    try:
-                        if elem.is_displayed() and elem.is_enabled():
-                            placeholder = elem.get_attribute('placeholder') or ''
-                            if 'message' in placeholder.lower() or 'type' in placeholder.lower():
-                                print(f"✅ Found input with placeholder (Attempt {attempt})")
-                                return elem
-                            elif elem.size['width'] > 100:
-                                print(f"✅ Found wide input element (Attempt {attempt})")
-                                return elem
-                    except:
-                        continue
-                
-                # Method 3: Click at likely position
-                if attempt % 3 == 0:  # Try clicking every 3 attempts
+                # Method 3: Click at bottom center
+                if attempt >= 3:
                     width = self.driver.execute_script("return window.innerWidth")
                     height = self.driver.execute_script("return window.innerHeight")
                     
@@ -160,365 +99,244 @@ class TelegramMasterBot:
                     """)
                     time.sleep(1)
                 
-                # Method 4: Telegram specific classes
-                telegram_classes = ['composer_rich_textarea', 'input-message-input', 'im_editable']
-                for class_name in telegram_classes:
-                    try:
-                        elements = self.driver.find_elements(By.CLASS_NAME, class_name)
-                        for elem in elements:
-                            if elem.is_displayed():
-                                print(f"✅ Found by class '{class_name}' (Attempt {attempt})")
-                                return elem
-                    except:
-                        continue
+                print(f"⚠️ Browser {self.browser_id}: Attempt {attempt+1}/10 - Retrying...")
+                time.sleep(2)
                 
-                if attempt < max_attempts:
-                    print(f"⚠️ Attempt {attempt}/{max_attempts}: Message box not found, retrying...")
-                    time.sleep(2)
-                    
             except Exception as e:
-                print(f"⚠️ Attempt {attempt} error: {e}")
+                print(f"⚠️ Browser {self.browser_id}: Search error - {e}")
                 time.sleep(2)
         
-        print(f"❌ Could not find message box after {max_attempts} attempts")
-        return None
+        print(f"❌ Browser {self.browser_id}: Could not find message box")
+        return False
     
-    def test_send_message(self, tab_index, message_box):
-        """Test sending a message"""
+    def test_browser_functionality(self):
+        """Test if browser can send messages"""
+        print(f"🧪 Browser {self.browser_id}: Testing functionality...")
+        
+        if not self.message_box:
+            if not self.find_message_box():
+                return False
+        
         try:
             # Generate test number
-            test_number = "6" + ''.join(str(random.randint(0, 9)) for _ in range(9))
+            test_num = str(self.starting_digit) + ''.join(str(random.randint(0, 9)) for _ in range(9))
+            test_msg = f"TEST {test_num}"
             
             # Focus
-            message_box.click()
+            self.message_box.click()
             time.sleep(0.5)
             
             # Clear
-            if message_box.tag_name in ['input', 'textarea']:
-                message_box.clear()
+            if self.message_box.tag_name in ['input', 'textarea']:
+                self.message_box.clear()
             else:
-                self.driver.execute_script("arguments[0].innerHTML = '';", message_box)
+                self.driver.execute_script("arguments[0].innerHTML = '';", self.message_box)
             
             time.sleep(0.5)
             
             # Type test message
-            test_message = f"TEST {test_number}"
-            for char in test_message:
-                message_box.send_keys(char)
+            for char in test_msg:
+                self.message_box.send_keys(char)
                 time.sleep(0.02)
             
             time.sleep(0.5)
             
             # Send
-            message_box.send_keys(Keys.RETURN)
+            self.message_box.send_keys(Keys.RETURN)
             
-            print(f"✅ Test message sent: {test_message}")
+            print(f"✅ Browser {self.browser_id}: Test successful - '{test_msg}'")
             time.sleep(2)
-            
             return True
             
         except Exception as e:
-            print(f"❌ Test send failed: {e}")
+            print(f"❌ Browser {self.browser_id}: Test failed - {e}")
             return False
     
-    def create_additional_tabs_only_after_first_ready(self):
-        """Create additional tabs only after first tab is ready"""
-        if not self.first_tab_ready:
-            print("❌ First tab not ready yet!")
-            return False
-        
-        print("\n" + "="*60)
-        print("📑 STEP 2: CREATING ADDITIONAL TABS")
-        print("="*60)
-        
-        target_url = "https://web.telegram.org/a/?account=2#8549408740"
-        
-        for i in range(9):
-            try:
-                print(f"\n➕ Creating tab {i+2}/10...")
-                
-                # Open new tab
-                self.driver.execute_script("window.open('');")
-                
-                # Get all handles
-                all_handles = self.driver.window_handles
-                new_tab = all_handles[-1]
-                
-                # Switch to new tab
-                self.driver.switch_to.window(new_tab)
-                
-                # Store tab
-                self.tabs.append(new_tab)
-                
-                # Open Telegram with same session
-                self.driver.get("https://web.telegram.org/a/")
-                time.sleep(3)
-                
-                # Check if logged in automatically
-                current_url = self.driver.current_url
-                if "web.telegram.org" in current_url:
-                    # Navigate to target chat
-                    self.driver.get(target_url)
-                    time.sleep(3)
-                    
-                    print(f"✅ Tab {i+2}: Created and navigated to chat")
-                else:
-                    print(f"⚠️ Tab {i+2}: May have session issue")
-                
-            except Exception as e:
-                print(f"❌ Tab {i+2} creation error: {e}")
-        
-        print(f"\n🎯 Total tabs created: {len(self.tabs)}")
-        
-        # Switch back to first tab
-        self.driver.switch_to.window(self.tabs[0])
-        return True
-    
-    def initialize_all_tabs_message_boxes(self):
-        """Initialize message boxes for all tabs"""
-        print("\n" + "="*60)
-        print("🔧 STEP 3: INITIALIZING ALL TABS")
-        print("="*60)
-        
-        message_boxes = []
-        
-        for i in range(len(self.tabs)):
-            print(f"\n🔍 Initializing tab {i+1}/10...")
-            
-            # Find message box for this tab
-            msg_box = self.find_message_box_with_retry(i, max_attempts=10)
-            
-            if msg_box:
-                message_boxes.append(msg_box)
-                print(f"✅ Tab {i+1}: Ready")
-            else:
-                message_boxes.append(None)
-                print(f"❌ Tab {i+1}: Not ready (will retry during sending)")
-        
-        return message_boxes
-    
-    def generate_indian_number(self, starting_digit):
+    def generate_unique_number(self):
         """Generate unique 10-digit Indian number"""
         while True:
-            number = str(starting_digit)
+            number = str(self.starting_digit)
             for _ in range(9):
                 number += str(random.randint(0, 9))
             
-            if number not in self.all_numbers:
-                self.all_numbers.add(number)
+            if number not in self.generated_numbers:
+                self.generated_numbers.add(number)
                 return number
     
-    def get_starting_digit_for_tab(self, tab_index):
-        """Get starting digit based on tab index"""
-        if tab_index < 3:  # Tabs 1-3: digit 6
-            return 6
-        elif tab_index < 6:  # Tabs 4-6: digit 8
-            return 8
-        else:  # Tabs 7-10: digit 9
-            return 9
-    
-    def send_from_tab_with_recovery(self, tab_index, message_boxes):
-        """Send message from tab with automatic recovery"""
-        starting_digit = self.get_starting_digit_for_tab(tab_index)
-        
-        # Generate 5 numbers
-        numbers_list = []
-        for _ in range(5):
-            numbers_list.append(self.generate_indian_number(starting_digit))
-        
-        message = " ".join(numbers_list)
-        
-        max_retries = 3
-        for retry in range(max_retries):
-            try:
-                # Switch to tab
-                self.driver.switch_to.window(self.tabs[tab_index])
-                
-                # Get or find message box
-                msg_box = message_boxes[tab_index]
-                if not msg_box:
-                    msg_box = self.find_message_box_with_retry(tab_index, max_attempts=5)
-                    if msg_box:
-                        message_boxes[tab_index] = msg_box
-                    else:
-                        print(f"❌ Tab {tab_index+1}: No message box found (retry {retry+1}/{max_retries})")
-                        time.sleep(2)
-                        continue
-                
-                # Focus and clear
-                msg_box.click()
-                time.sleep(0.3)
-                
-                # Clear
-                if msg_box.tag_name in ['input', 'textarea']:
-                    msg_box.clear()
-                else:
-                    self.driver.execute_script("arguments[0].innerHTML = '';", msg_box)
-                
-                time.sleep(0.3)
-                
-                # Type
-                for char in message:
-                    msg_box.send_keys(char)
-                    time.sleep(0.01)
-                
-                time.sleep(0.3)
-                
-                # Send
-                msg_box.send_keys(Keys.RETURN)
-                
-                print(f"✅ Tab {tab_index+1}[{starting_digit}]: Sent {len(numbers_list)} numbers")
-                return True, message_boxes
-                
-            except Exception as e:
-                print(f"❌ Tab {tab_index+1}: Send error (retry {retry+1}/{max_retries}) - {e}")
-                
-                # Reset message box for this tab
-                message_boxes[tab_index] = None
-                time.sleep(2)
-        
-        print(f"❌ Tab {tab_index+1}: Failed after {max_retries} retries")
-        return False, message_boxes
-    
-    def run_continuous_messaging(self):
-        """Run continuous messaging from all tabs"""
-        print("\n" + "="*70)
-        print("🚀 STEP 4: STARTING CONTINUOUS MESSAGING")
-        print("="*70)
-        
-        print("📊 Tab Distribution:")
-        print("  • Tabs 1-3: Starting with digit 6")
-        print("  • Tabs 4-6: Starting with digit 8")
-        print("  • Tabs 7-10: Starting with digit 9")
-        print("⏱️  Each tab sends 5 numbers every 2 seconds")
-        print("🔄 Automatic recovery for failed tabs")
-        print("⏸️  Press Ctrl+C to stop")
-        print("="*70)
-        
-        # Initialize message boxes
-        message_boxes = self.initialize_all_tabs_message_boxes()
-        
-        cycle_count = 0
-        stats = {i: {"success": 0, "fail": 0} for i in range(10)}
-        
+    def send_batch(self):
+        """Send one batch of 5 numbers"""
         try:
-            while True:
-                cycle_count += 1
-                print(f"\n🔄 CYCLE #{cycle_count}")
-                
-                # Process each tab
-                for i in range(len(self.tabs)):
-                    success, message_boxes = self.send_from_tab_with_recovery(i, message_boxes)
-                    
-                    if success:
-                        stats[i]["success"] += 1
-                    else:
-                        stats[i]["fail"] += 1
-                
-                # Show statistics every 5 cycles
-                if cycle_count % 5 == 0:
-                    print(f"\n📊 STATISTICS after {cycle_count} cycles:")
-                    total_success = sum(stats[i]["success"] for i in range(10))
-                    total_fail = sum(stats[i]["fail"] for i in range(10))
-                    total_attempts = total_success + total_fail
-                    
-                    if total_attempts > 0:
-                        success_rate = (total_success / total_attempts) * 100
-                        print(f"  Success rate: {success_rate:.1f}%")
-                    
-                    print(f"  Total unique numbers: {len(self.all_numbers)}")
-                    
-                    # Show per-tab stats
-                    for i in range(10):
-                        tab_total = stats[i]["success"] + stats[i]["fail"]
-                        if tab_total > 0:
-                            tab_rate = (stats[i]["success"] / tab_total) * 100
-                            digit = self.get_starting_digit_for_tab(i)
-                            print(f"  Tab {i+1}[{digit}]: {stats[i]['success']}/{tab_total} ({tab_rate:.1f}%)")
-                
-                # Wait before next cycle
-                print(f"\n⏳ Waiting 2 seconds...")
-                time.sleep(2)
-                
-        except KeyboardInterrupt:
-            print(f"\n\n⏹️ Stopped after {cycle_count} cycles")
-        
+            # Generate 5 numbers
+            numbers_list = []
+            for _ in range(5):
+                numbers_list.append(self.generate_unique_number())
+            
+            message = " ".join(numbers_list)
+            
+            # Make sure we have message box
+            if not self.message_box:
+                if not self.find_message_box():
+                    return False
+            
+            # Focus
+            self.message_box.click()
+            time.sleep(0.3)
+            
+            # Clear
+            if self.message_box.tag_name in ['input', 'textarea']:
+                self.message_box.clear()
+            else:
+                self.driver.execute_script("arguments[0].innerHTML = '';", self.message_box)
+            
+            time.sleep(0.3)
+            
+            # Type message
+            for char in message:
+                self.message_box.send_keys(char)
+                time.sleep(0.01)
+            
+            time.sleep(0.3)
+            
+            # Send
+            self.message_box.send_keys(Keys.RETURN)
+            
+            print(f"✅ Browser {self.browser_id}[{self.starting_digit}]: {message}")
+            return True
+            
         except Exception as e:
-            print(f"\n❌ Error in messaging loop: {e}")
-        
-        finally:
-            print("\n" + "="*70)
-            print("📊 FINAL REPORT")
-            print("="*70)
-            print(f"Total cycles completed: {cycle_count}")
-            print(f"Total unique numbers generated: {len(self.all_numbers)}")
-            print(f"Browser remains open with all tabs")
-            print("="*70)
+            print(f"❌ Browser {self.browser_id}: Send error - {e}")
+            
+            # Try to find message box again
+            self.message_box = None
+            if self.find_message_box():
+                return self.send_batch()  # Retry
+            
+            return False
     
-    def run_bot(self):
-        """Main bot execution flow"""
-        print("\n" + "="*70)
-        print("🤖 TELEGRAM MASTER BOT - SEQUENTIAL SETUP")
-        print("="*70)
+    def run_browser_bot(self):
+        """Main function to run this browser bot"""
+        print(f"\n{'='*60}")
+        print(f"🚀 BROWSER {self.browser_id} STARTING")
+        print(f"Starting digit: {self.starting_digit}")
+        print(f"{'='*60}")
         
-        # Setup Chrome
-        if not self.setup_chrome():
+        # Setup browser
+        if not self.setup_browser():
             return
         
         try:
-            # STEP 1: First tab complete setup
-            if not self.wait_for_first_tab_login_and_setup():
-                print("❌ First tab setup failed. Exiting.")
+            # Manual login
+            self.manual_login_and_setup()
+            
+            # Find message box
+            if not self.find_message_box():
+                print(f"❌ Browser {self.browser_id}: Cannot find message box")
                 return
             
-            # STEP 2: Create additional tabs (only after first is ready)
-            if not self.create_additional_tabs_only_after_first_ready():
-                print("❌ Failed to create additional tabs")
+            # Test functionality
+            if not self.test_browser_functionality():
+                print(f"❌ Browser {self.browser_id}: Test failed")
                 return
             
-            # STEP 3: Run continuous messaging
-            self.run_continuous_messaging()
+            # Start continuous messaging
+            print(f"\n🎯 Browser {self.browser_id}: READY!")
+            print(f"📤 Sending 5 numbers every 2 seconds")
+            print(f"⏸️ Press Ctrl+C in terminal to stop")
+            print(f"{'='*60}")
             
+            batch_count = 0
+            try:
+                while True:
+                    batch_count += 1
+                    print(f"\n📦 Browser {self.browser_id}: Batch #{batch_count}")
+                    
+                    self.send_batch()
+                    
+                    # Wait 2 seconds
+                    time.sleep(2)
+                    
+            except KeyboardInterrupt:
+                print(f"\n⏹️ Browser {self.browser_id}: Stopped")
+            except Exception as e:
+                print(f"❌ Browser {self.browser_id}: Error - {e}")
+        
         except Exception as e:
-            print(f"\n❌ Bot execution error: {e}")
+            print(f"❌ Browser {self.browser_id}: Fatal error - {e}")
         
         finally:
-            print("\n💡 Bot finished. All tabs remain open.")
-            print("   Close browser manually when done.")
+            print(f"\n📊 Browser {self.browser_id}: Finished")
+            print(f"Total numbers sent: {len(self.generated_numbers)}")
+            print(f"Browser will remain open")
+
+def run_browser_in_thread(browser_id, starting_digit):
+    """Run a browser bot in separate thread"""
+    bot = TelegramBrowserBot(browser_id, starting_digit)
+    bot.run_browser_bot()
 
 def main():
     print("\n" + "="*70)
-    print("🤖 TELEGRAM SEQUENTIAL BOT")
+    print("🤖 TELEGRAM 2-BROWSER BOT")
+    print("="*70)
+    print("Configuration:")
+    print("  • Browser 1: Starting with digit 8")
+    print("  • Browser 2: Starting with digit 9")
+    print("  • 6-digit numbers removed")
     print("="*70)
     
     # Check ChromeDriver
     driver_path = r'C:\Users\rosha\Downloads\chrome_automation\chromedriver.exe'
+    
     if not os.path.exists(driver_path):
         print(f"❌ ChromeDriver not found at: {driver_path}")
         return
     
     print("✅ ChromeDriver found")
     
-    print("\n📋 SEQUENTIAL WORKFLOW:")
-    print("1. ➡️  First tab opens")
-    print("2. 🔑 You login manually in first tab")
-    print("3. ✅ Bot verifies first tab is working")
-    print("4. 📑 Only THEN other tabs are created")
-    print("5. 🚀 All tabs start messaging together")
+    print("\n📋 INSTRUCTIONS:")
+    print("1. Two SEPARATE Chrome browsers will open")
+    print("2. Login in EACH browser separately")
+    print("3. Browser 1 will send numbers starting with 8")
+    print("4. Browser 2 will send numbers starting with 9")
+    print("5. Each sends 5 numbers every 2 seconds")
     
     print("\n⚠️ IMPORTANT:")
-    print("• DO NOT close first tab")
-    print("• Wait for 'FIRST TAB IS FULLY READY' message")
-    print("• Other tabs will open automatically")
+    print("• Close all Chrome windows before starting")
+    print("• You need to login in BOTH browsers")
+    print("• Each browser has separate session")
     
-    print("\n🚀 Starting in 5 seconds...")
-    for i in range(5, 0, -1):
+    print("\n🚀 Starting in 10 seconds...")
+    for i in range(10, 0, -1):
         print(f"   {i}...")
         time.sleep(1)
     
-    # Create and run bot
-    bot = TelegramMasterBot()
-    bot.run_bot()
+    # Create threads for both browsers
+    threads = []
+    
+    # Browser 1: Starting with 8
+    print(f"\n📱 Opening Browser 1 (Digit: 8)...")
+    thread1 = threading.Thread(target=run_browser_in_thread, args=(1, 8))
+    threads.append(thread1)
+    thread1.start()
+    
+    # Wait before opening second browser
+    time.sleep(5)
+    
+    # Browser 2: Starting with 9
+    print(f"\n📱 Opening Browser 2 (Digit: 9)...")
+    thread2 = threading.Thread(target=run_browser_in_thread, args=(2, 9))
+    threads.append(thread2)
+    thread2.start()
+    
+    # Wait for both threads to complete
+    try:
+        for thread in threads:
+            thread.join()
+    except KeyboardInterrupt:
+        print("\n⏹️ All browsers stopped by user")
+    
+    print("\n" + "="*70)
+    print("🎉 BOTH BROWSERS COMPLETED")
+    print("="*70)
 
 if __name__ == "__main__":
     main()
