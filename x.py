@@ -1,448 +1,271 @@
 import time
 import random
+import subprocess
+import threading
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.service import Service
 import os
 
 print("\n" + "="*70)
-print("🤖 TELEGRAM CHAT MESSAGE BOT")
+print("🤖 TELEGRAM 2-BROWSER BOT (FIXED)")
 print("="*70)
 
-# Setup Browser 1 (Digit: 8)
-service = Service(r'C:\Users\rosha\Downloads\chrome_automation\chromedriver.exe')
-
-options1 = webdriver.ChromeOptions()
-options1.add_argument("--start-maximized")
-options1.add_argument("--user-data-dir=C:\\Users\\rosha\\browser1_data")
-
-browser1 = webdriver.Chrome(service=service, options=options1)
-
-print("\n🚀 BROWSER 1 STARTING (DIGIT: 8)")
-print("="*50)
-
-# Step 1: Open Telegram and login
-print("📱 Opening Telegram...")
-browser1.get("https://web.telegram.org/a/")
-
-print("\n🔑 PLEASE LOGIN WITH QR CODE IN BROWSER 1")
-print("Wait until you can see chat messages")
-input("Press Enter AFTER you are logged in and can see chat interface: ")
-
-# Step 2: Navigate to target chat
-print("📍 Going to target chat...")
-browser1.get("https://web.telegram.org/a/#8549408740")
-time.sleep(5)
-
-print("✅ Target chat should be loaded")
-
-# Step 3: SPECIFICALLY FIND MESSAGE INPUT FIELD (NOT SEARCH)
-print("\n🔍 Finding CHAT MESSAGE INPUT FIELD (not search box)...")
-
-def find_chat_message_input(driver, browser_name):
-    """Find the actual chat message input field"""
+def run_browser(starting_digit, browser_id):
+    """Run a browser instance"""
+    print(f"\n🚀 BROWSER {browser_id} STARTING (DIGIT: {starting_digit})")
+    print("="*50)
     
-    # Telegram Web has specific structure for message input
-    # It's usually at the bottom, in the chat footer
-    
-    print(f"{browser_name}: Looking for chat message box...")
-    
-    # STRATEGY 1: Look in footer/chat input area
-    for attempt in range(15):
-        print(f"{browser_name}: Attempt {attempt+1}/15")
+    try:
+        # Setup Chrome options
+        from selenium.webdriver.chrome.options import Options
+        options = Options()
+        options.add_argument("--start-maximized")
         
+        # Use different user data directories
+        user_data_dir = f"C:\\Users\\rosha\\telegram_bot_{browser_id}"
+        options.add_argument(f"--user-data-dir={user_data_dir}")
+        
+        # IMPORTANT: Use different port for each browser
+        if browser_id == 1:
+            options.add_argument("--remote-debugging-port=9222")
+        else:
+            options.add_argument("--remote-debugging-port=9223")
+        
+        # Try different methods to start Chrome
+        driver = None
+        
+        # Method 1: Direct webdriver (simplest)
         try:
-            # Method A: Find by specific Telegram classes
-            telegram_classes = [
-                'composer_rich_textarea',  # Most common
-                'input-message-input',
-                'im_editable',
-                'message-input',
-                'composer-input'
-            ]
-            
-            for class_name in telegram_classes:
+            print(f"Method 1: Starting Chrome directly...")
+            driver = webdriver.Chrome(options=options)
+        except:
+            # Method 2: Try with Service
+            try:
+                print(f"Method 2: Trying with Service...")
+                from selenium.webdriver.chrome.service import Service
+                driver_path = r'C:\Users\rosha\Downloads\chrome_automation\chromedriver.exe'
+                service = Service(driver_path)
+                driver = webdriver.Chrome(service=service, options=options)
+            except:
+                # Method 3: Manual chromedriver
+                print(f"Method 3: Manual approach...")
+                # Copy chromedriver to temp location
+                import shutil
+                temp_driver = f"C:\\Users\\rosha\\Downloads\\chrome_automation\\chromedriver_{browser_id}.exe"
+                shutil.copy(r'C:\Users\rosha\Downloads\chrome_automation\chromedriver.exe', temp_driver)
+                
+                from selenium.webdriver.chrome.service import Service
+                service = Service(temp_driver)
+                driver = webdriver.Chrome(service=service, options=options)
+        
+        if not driver:
+            print(f"❌ Browser {browser_id}: Could not start Chrome")
+            return
+        
+        print(f"✅ Browser {browser_id}: Chrome started successfully")
+        
+        # Step 1: Open Telegram
+        print("📱 Opening Telegram...")
+        driver.get("https://web.telegram.org/a/")
+        
+        print(f"\n🔑 BROWSER {browser_id}: PLEASE LOGIN WITH QR CODE")
+        print(f"Starting digit for this browser: {starting_digit}")
+        input(f"Press Enter AFTER you are fully logged in to Browser {browser_id}: ")
+        
+        # Step 2: Navigate to target chat
+        print(f"\n📍 Browser {browser_id}: Going to target chat...")
+        driver.get("https://web.telegram.org/a/#8549408740")
+        time.sleep(5)
+        
+        # Step 3: Find message box
+        print(f"🔍 Browser {browser_id}: Finding message box...")
+        
+        def find_message_input():
+            for attempt in range(20):
                 try:
-                    elements = driver.find_elements(By.CLASS_NAME, class_name)
+                    # Method 1: Contenteditable
+                    elements = driver.find_elements(By.CSS_SELECTOR, "[contenteditable='true']")
                     for elem in elements:
                         if elem.is_displayed():
-                            print(f"{browser_name}: Found by class '{class_name}'")
+                            print(f"✅ Browser {browser_id}: Found contenteditable box")
                             return elem
-                except:
-                    continue
-            
-            # Method B: Look for contenteditable in footer
-            try:
-                # Find chat footer first
-                footer_selectors = [
-                    '.chat-footer',
-                    '.im_send_form',
-                    '.composer',
-                    '.message-input-wrapper',
-                    '[class*="send-form"]',
-                    '[class*="composer"]'
-                ]
-                
-                for selector in footer_selectors:
-                    try:
-                        footers = driver.find_elements(By.CSS_SELECTOR, selector)
-                        for footer in footers:
-                            if footer.is_displayed():
-                                # Look for input inside footer
-                                inputs = footer.find_elements(By.CSS_SELECTOR, "[contenteditable='true'], input, textarea")
-                                for inp in inputs:
-                                    if inp.is_displayed():
-                                        print(f"{browser_name}: Found in footer with selector '{selector}'")
-                                        return inp
-                    except:
-                        continue
-            except:
-                pass
-            
-            # Method C: Look for specific attribute patterns
-            try:
-                # Telegram message input often has specific attributes
-                elements = driver.find_elements(By.CSS_SELECTOR, "[contenteditable='true'][data-placeholder*='Message'], [contenteditable='true'][placeholder*='Message']")
-                for elem in elements:
-                    if elem.is_displayed():
-                        print(f"{browser_name}: Found by placeholder")
-                        return elem
-            except:
-                pass
-            
-            # Method D: Look at the bottom of the screen (where message box usually is)
-            try:
-                height = driver.execute_script("return window.innerHeight")
-                width = driver.execute_script("return window.innerWidth")
-                
-                # Scan from bottom upwards
-                for y_offset in range(50, 200, 20):
-                    y = height - y_offset
-                    x = width // 2
                     
-                    # Click at this position
-                    driver.execute_script(f"""
-                        var elem = document.elementFromPoint({x}, {y});
-                        if(elem) {{
-                            elem.click();
-                            elem.focus();
-                        }}
-                        return elem;
-                    """)
-                    
-                    time.sleep(0.5)
-                    
-                    # Check if active element is input-like
-                    try:
-                        active = driver.switch_to.active_element
-                        tag = active.tag_name.lower()
-                        contenteditable = active.get_attribute('contenteditable')
-                        
-                        if tag in ['input', 'textarea'] or contenteditable == 'true':
-                            print(f"{browser_name}: Found by clicking at position ({x}, {y})")
-                            return active
-                    except:
-                        pass
-            except:
-                pass
-            
-            # Method E: Try to find "Send" button and go left from there
-            try:
-                send_buttons = driver.find_elements(By.XPATH, "//button[contains(., 'Send') or contains(., 'SEND') or @aria-label='Send']")
-                if send_buttons:
-                    # Click near send button
-                    driver.execute_script("arguments[0].click();", send_buttons[0])
-                    time.sleep(1)
-                    
-                    # Look for input near it
-                    elements = driver.find_elements(By.CSS_SELECTOR, "[contenteditable='true'], input, textarea")
+                    # Method 2: Input/textarea
+                    elements = driver.find_elements(By.TAG_NAME, "input") + driver.find_elements(By.TAG_NAME, "textarea")
                     for elem in elements:
                         if elem.is_displayed():
-                            print(f"{browser_name}: Found near Send button")
+                            print(f"✅ Browser {browser_id}: Found input box")
                             return elem
-            except:
-                pass
-            
-            # Method F: Use JavaScript to find Telegram's message input
-            try:
-                element = driver.execute_script("""
-                    // Telegram Web specific selectors
-                    var selectors = [
-                        '.composer_rich_textarea',
-                        '[contenteditable="true"].im_editable',
-                        '.input-message-input',
-                        'div[data-peer-id] [contenteditable="true"]'
-                    ];
                     
-                    for(var i = 0; i < selectors.length; i++) {
-                        var elem = document.querySelector(selectors[i]);
-                        if(elem && elem.offsetParent !== null) {
-                            elem.click();
-                            elem.focus();
-                            return elem;
-                        }
-                    }
+                    # Method 3: Click at bottom
+                    if attempt % 3 == 0:
+                        width = driver.execute_script("return window.innerWidth")
+                        height = driver.execute_script("return window.innerHeight")
+                        driver.execute_script(f"""
+                            var elem = document.elementFromPoint({width//2}, {height-50});
+                            if(elem) {{
+                                elem.click();
+                                elem.focus();
+                            }}
+                        """)
+                        time.sleep(1)
                     
-                    // Fallback: look for any contenteditable at bottom
-                    var allEditables = document.querySelectorAll('[contenteditable="true"]');
-                    for(var i = 0; i < allEditables.length; i++) {
-                        var rect = allEditables[i].getBoundingClientRect();
-                        if(rect.bottom > window.innerHeight - 100) { // Near bottom
-                            allEditables[i].click();
-                            allEditables[i].focus();
-                            return allEditables[i];
-                        }
-                    }
+                    print(f"⚠️ Browser {browser_id}: Attempt {attempt+1}/20, retrying...")
+                    time.sleep(2)
                     
-                    return null;
-                """)
-                
-                if element:
-                    print(f"{browser_name}: Found via JavaScript")
-                    return element
-            except:
-                pass
+                except Exception as e:
+                    print(f"⚠️ Browser {browser_id}: Search error - {e}")
+                    time.sleep(2)
             
-            print(f"{browser_name}: Not found yet, waiting 2 seconds...")
-            time.sleep(2)
-            
-        except Exception as e:
-            print(f"{browser_name}: Error during search: {e}")
-            time.sleep(2)
-    
-    print(f"{browser_name}: ❌ Could not find message input after 15 attempts")
-    return None
-
-# Find message box for Browser 1
-msg_box1 = find_chat_message_input(browser1, "Browser 1")
-
-if not msg_box1:
-    print("❌ Browser 1: Cannot find chat message input")
-    browser1.save_screenshot('browser1_error.png')
-    print("Screenshot saved: browser1_error.png")
-    browser1.quit()
-    exit()
-
-# Test Browser 1
-print("🧪 Browser 1: Testing message sending...")
-try:
-    # Click to focus
-    msg_box1.click()
-    time.sleep(1)
-    
-    # Type test message
-    test_num = "8" + ''.join(str(random.randint(0, 9)) for _ in range(9))
-    test_msg = f"TEST {test_num}"
-    
-    # Clear if possible
-    try:
-        if msg_box1.tag_name in ['input', 'textarea']:
-            msg_box1.clear()
-        else:
-            browser1.execute_script("arguments[0].innerHTML = '';", msg_box1)
-    except:
-        pass
-    
-    time.sleep(0.5)
-    
-    # Type slowly
-    for char in test_msg:
-        msg_box1.send_keys(char)
-        time.sleep(0.03)
-    
-    time.sleep(0.5)
-    
-    # Send
-    msg_box1.send_keys(Keys.RETURN)
-    
-    print(f"✅ Browser 1: Test successful - '{test_msg}'")
-    time.sleep(2)
-    
-except Exception as e:
-    print(f"❌ Browser 1: Test failed - {e}")
-    browser1.save_screenshot('browser1_test_error.png')
-    browser1.quit()
-    exit()
-
-# Setup Browser 2 (Digit: 9)
-print("\n\n🚀 BROWSER 2 STARTING (DIGIT: 9)")
-print("="*50)
-
-options2 = webdriver.ChromeOptions()
-options2.add_argument("--start-maximized")
-options2.add_argument("--user-data-dir=C:\\Users\\rosha\\browser2_data")
-
-browser2 = webdriver.Chrome(service=service, options=options2)
-
-# Browser 2 setup
-print("📱 Opening Telegram...")
-browser2.get("https://web.telegram.org/a/")
-
-print("\n🔑 PLEASE LOGIN WITH QR CODE IN BROWSER 2")
-print("Wait until you can see chat messages")
-input("Press Enter AFTER you are logged in and can see chat interface: ")
-
-print("📍 Going to target chat...")
-browser2.get("https://web.telegram.org/a/?account=2#8549408740")
-time.sleep(5)
-
-print("✅ Target chat should be loaded")
-
-# Find message box for Browser 2
-msg_box2 = find_chat_message_input(browser2, "Browser 2")
-
-if not msg_box2:
-    print("❌ Browser 2: Cannot find chat message input")
-    browser2.save_screenshot('browser2_error.png')
-    print("Screenshot saved: browser2_error.png")
-    browser2.quit()
-    browser1.quit()
-    exit()
-
-# Test Browser 2
-print("🧪 Browser 2: Testing message sending...")
-try:
-    # Click to focus
-    msg_box2.click()
-    time.sleep(1)
-    
-    # Type test message
-    test_num = "9" + ''.join(str(random.randint(0, 9)) for _ in range(9))
-    test_msg = f"TEST {test_num}"
-    
-    # Clear if possible
-    try:
-        if msg_box2.tag_name in ['input', 'textarea']:
-            msg_box2.clear()
-        else:
-            browser2.execute_script("arguments[0].innerHTML = '';", msg_box2)
-    except:
-        pass
-    
-    time.sleep(0.5)
-    
-    # Type slowly
-    for char in test_msg:
-        msg_box2.send_keys(char)
-        time.sleep(0.03)
-    
-    time.sleep(0.5)
-    
-    # Send
-    msg_box2.send_keys(Keys.RETURN)
-    
-    print(f"✅ Browser 2: Test successful - '{test_msg}'")
-    time.sleep(2)
-    
-except Exception as e:
-    print(f"❌ Browser 2: Test failed - {e}")
-    browser2.save_screenshot('browser2_test_error.png')
-    browser2.quit()
-    browser1.quit()
-    exit()
-
-# Both browsers ready
-print("\n" + "="*70)
-print("🎯 BOTH BROWSERS READY TO SEND MESSAGES!")
-print("="*70)
-print("Browser 1: Numbers starting with 8")
-print("Browser 2: Numbers starting with 9")
-print("\n⏱️  Each browser sends 5 numbers every 2 seconds")
-print("💬 Sending to CHAT MESSAGE INPUT (not search box)")
-print("⏸️  Press Ctrl+C to stop")
-print("="*70)
-
-numbers_browser1 = set()
-numbers_browser2 = set()
-cycle = 0
-
-def send_from_browser(browser, msg_box, starting_digit, numbers_set, browser_name):
-    """Send message from a browser"""
-    try:
-        # Generate 5 unique numbers
-        numbers_list = []
-        for _ in range(5):
-            while True:
-                num = str(starting_digit)
-                for _ in range(9):
-                    num += str(random.randint(0, 9))
-                
-                if num not in numbers_set:
-                    numbers_set.add(num)
-                    numbers_list.append(num)
-                    break
+            return None
         
-        message = " ".join(numbers_list)
+        msg_box = find_message_input()
         
-        # Focus
-        msg_box.click()
-        time.sleep(0.3)
+        if not msg_box:
+            print(f"❌ Browser {browser_id}: Cannot find message box")
+            driver.save_screenshot(f'browser_{browser_id}_error.png')
+            driver.quit()
+            return
         
-        # Clear
+        # Step 4: Test browser
+        print(f"🧪 Browser {browser_id}: Testing...")
         try:
+            msg_box.click()
+            time.sleep(1)
+            
+            test_num = str(starting_digit) + ''.join(str(random.randint(0, 9)) for _ in range(9))
+            test_msg = f"TEST {test_num}"
+            
+            # Clear
             if msg_box.tag_name in ['input', 'textarea']:
                 msg_box.clear()
             else:
-                browser.execute_script("arguments[0].innerHTML = '';", msg_box)
-        except:
-            pass
+                driver.execute_script("arguments[0].innerHTML = '';", msg_box)
+            
+            time.sleep(0.5)
+            
+            # Type
+            for char in test_msg:
+                msg_box.send_keys(char)
+                time.sleep(0.02)
+            
+            time.sleep(0.5)
+            msg_box.send_keys(Keys.RETURN)
+            
+            print(f"✅ Browser {browser_id}: Test successful")
+            time.sleep(2)
+            
+        except Exception as e:
+            print(f"❌ Browser {browser_id}: Test failed - {e}")
+            driver.quit()
+            return
         
-        time.sleep(0.3)
+        # Step 5: Start messaging
+        print(f"\n🎯 Browser {browser_id}: READY!")
+        print(f"📤 Sending 5 numbers every 2 seconds")
+        print(f"⏸️ Press Ctrl+C in terminal to stop all browsers")
+        print(f"{'='*50}")
         
-        # Type
-        for char in message:
-            msg_box.send_keys(char)
-            time.sleep(0.01)
+        numbers_set = set()
+        cycle = 0
         
-        time.sleep(0.3)
+        try:
+            while True:
+                cycle += 1
+                print(f"\n📦 Browser {browser_id}: Batch #{cycle}")
+                
+                try:
+                    # Generate 5 numbers
+                    numbers = []
+                    for _ in range(5):
+                        while True:
+                            num = str(starting_digit)
+                            for _ in range(9):
+                                num += str(random.randint(0, 9))
+                            
+                            if num not in numbers_set:
+                                numbers_set.add(num)
+                                numbers.append(num)
+                                break
+                    
+                    message = " ".join(numbers)
+                    
+                    # Send
+                    msg_box.click()
+                    time.sleep(0.3)
+                    
+                    # Clear
+                    if msg_box.tag_name in ['input', 'textarea']:
+                        msg_box.clear()
+                    else:
+                        driver.execute_script("arguments[0].innerHTML = '';", msg_box)
+                    
+                    time.sleep(0.3)
+                    
+                    # Type
+                    for char in message:
+                        msg_box.send_keys(char)
+                        time.sleep(0.01)
+                    
+                    time.sleep(0.3)
+                    msg_box.send_keys(Keys.RETURN)
+                    
+                    print(f"✅ Browser {browser_id}[{starting_digit}]: Sent {len(numbers)} numbers")
+                    
+                except Exception as e:
+                    print(f"❌ Browser {browser_id}: Send error - {e}")
+                    # Try to find message box again
+                    msg_box = find_message_input()
+                    if not msg_box:
+                        print(f"❌ Browser {browser_id}: Lost message box, exiting")
+                        break
+                
+                # Wait 2 seconds
+                time.sleep(2)
+                
+        except KeyboardInterrupt:
+            print(f"\n⏹️ Browser {browser_id}: Stopped")
+        except Exception as e:
+            print(f"\n❌ Browser {browser_id}: Error - {e}")
         
-        # Send
-        msg_box.send_keys(Keys.RETURN)
-        
-        return True, message
-        
+        finally:
+            print(f"\n📊 Browser {browser_id}: Finished")
+            print(f"Total numbers sent: {len(numbers_set)}")
+            print(f"Browser remains open")
+            
     except Exception as e:
-        print(f"{browser_name}: Send error - {e}")
-        return False, None
+        print(f"\n❌ Browser {browser_id}: Fatal error - {e}")
 
-try:
-    while True:
-        cycle += 1
-        print(f"\n🔄 Cycle #{cycle}")
-        
-        # Browser 1: Send numbers starting with 8
-        success1, message1 = send_from_browser(browser1, msg_box1, 8, numbers_browser1, "Browser 1")
-        if success1:
-            print(f"✅ Browser 1[8]: Sent {message1}")
-        else:
-            print(f"❌ Browser 1: Failed to send")
-        
-        # Browser 2: Send numbers starting with 9
-        success2, message2 = send_from_browser(browser2, msg_box2, 9, numbers_browser2, "Browser 2")
-        if success2:
-            print(f"✅ Browser 2[9]: Sent {message2}")
-        else:
-            print(f"❌ Browser 2: Failed to send")
-        
-        # Show stats every 10 cycles
-        if cycle % 10 == 0:
-            print(f"\n📊 Statistics after {cycle} cycles:")
-            print(f"  Browser 1: {len(numbers_browser1)} unique numbers")
-            print(f"  Browser 2: {len(numbers_browser2)} unique numbers")
-        
-        # Wait 2 seconds
-        time.sleep(2)
-        
-except KeyboardInterrupt:
-    print(f"\n\n⏹️ Stopped after {cycle} cycles")
-    print(f"📊 Final stats:")
-    print(f"  Browser 1: {len(numbers_browser1)} unique numbers")
-    print(f"  Browser 2: {len(numbers_browser2)} unique numbers")
+# Run browsers in sequence
+print("\n📋 INSTRUCTIONS:")
+print("1. First Browser 1 will start (Digit: 8)")
+print("2. Login in Browser 1")
+print("3. Then Browser 2 will start (Digit: 9)")
+print("4. Login in Browser 2")
+print("5. Both will send messages independently")
 
-except Exception as e:
-    print(f"\n❌ Error: {e}")
+print("\n⚠️ IMPORTANT:")
+print("• Close ALL Chrome windows before starting")
+print("• You need to login in BOTH browsers separately")
+print("• Each browser runs independently")
 
-finally:
-    print("\n🤖 Bot finished. Both browsers remain open.")
-    print("Close them manually when done.")
+print("\n🚀 Starting Browser 1 in 5 seconds...")
+for i in range(5, 0, -1):
+    print(f"   {i}...")
+    time.sleep(1)
+
+# Run Browser 1
+run_browser(8, 1)
+
+print("\n\n🚀 Starting Browser 2 in 5 seconds...")
+for i in range(5, 0, -1):
+    print(f"   {i}...")
+    time.sleep(1)
+
+# Run Browser 2
+run_browser(9, 2)
+
+print("\n" + "="*70)
+print("🎉 BOTH BROWSERS COMPLETED")
+print("="*70)
